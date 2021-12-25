@@ -4,7 +4,7 @@ project(gDerivator)
 set(CMAKE_CXX_STANDART 20)
 set(CMAKE_CXX_STANDART_REQUIRED ON)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" CACHE STRING "Comment" FORCE)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2" CACHE STRING "Comment" FORCE)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -D NDEBUG" CACHE STRING "Comment" FORCE)
 set(CMAKE_CXX_FLAGS_SANITIZER "${CMAKE_CXX_FLAGS} -Wpedantic -Wall -Wextra -Wformat=2 -fsanitize=address,undefined -g -D __SANITIZE_ADDRESS__ -D EXTRA_VERBOSE" CACHE STRING "Comment" FORCE)
 set(CMAKE_CXX_FLAGS_COVERAGE "${CMAKE_CXX_FLAGS} -D NDEBUG -fprofile-instr-generate -fcoverage-mapping" CACHE STRING "Comment" FORCE)
@@ -55,6 +55,18 @@ if(NOT gtree_POPULATED)
   FetchContent_Populate(gtree)
   include_directories(${gtree_SOURCE_DIR})
 endif()
+
+FetchContent_Declare(
+  gstack
+  GIT_REPOSITORY https://github.com/lord-KA/hopefullyunkillablestack.git
+  # GIT_TAG        release-1.0.3 #TODO add release tag
+)
+if(NOT gstack_POPULATED)
+  FetchContent_Populate(gstack)
+  include_directories(${gstack_SOURCE_DIR})
+endif()
+
+
 
 set_target_properties(gtest PROPERTIES FOLDER extern)
 set_target_properties(gtest_main PROPERTIES FOLDER extern)

@@ -1,5 +1,11 @@
 #pragma once
 
+#define STACK_TYPE size_t
+#define ELEM_PRINTF_FORM "%lu"
+#define CHEAP_DEBUG
+
+#include "gstack.h"
+
 enum gDerivator_Node_mode {
     gDerivator_Node_mode_none,
     gDerivator_Node_mode_sum,
@@ -136,6 +142,7 @@ static const char gDerivator_statusMsg[gDerivator_status_CNT][MAX_LINE_LEN] = {
 struct gDerivator {
     gTree tree;
     FILE *logStream;
+    GENERIC(stack) LexemeIds = {};
 } typedef gDerivator;
 
 
@@ -158,6 +165,8 @@ gDerivator_status gDerivator_ctor(gDerivator *context, FILE *newLogStream)
     gTree_status status = gTree_ctor(&context->tree, context->logStream);
     GDERIVATOR_ASSERT_LOG(status == gTree_status_OK, gDerivator_status_TreeErr);
 
+    GENERIC(stack_ctor)(&context->LexemeIds);
+
     return gDerivator_status_OK;
 }
 
@@ -167,6 +176,8 @@ gDerivator_status gDerivator_dtor(gDerivator *context)
 
     gTree_status status = gTree_dtor(&context->tree);
     GDERIVATOR_ASSERT_LOG(status == gTree_status_OK, gDerivator_status_TreeErr);
+
+    GENERIC(stack_dtor)(&context->LexemeIds);
 
     return gDerivator_status_OK;
 }
@@ -178,6 +189,7 @@ gDerivator_status gDerivator_lexer(gDerivator *context, const char *buffer)
     char *cur = (char*)buffer;
     size_t id = -1;
     gDerivator_Node *node = NULL;
+    GENERIC(stack_clear)(&context->LexemeIds);
 
     while (*cur != '\0' && *cur != '\n') {      //TODO add gArray so objPool could be used repeatedly
         fprintf(stderr, "cur = %s\n", cur);
@@ -187,6 +199,8 @@ gDerivator_status gDerivator_lexer(gDerivator *context, const char *buffer)
         }
         id   = GDERIVATOR_POOL_ALLOC();
         node = &(GDERIVATOR_NODE_BY_ID(id)->data);
+        GENERIC(stack_push)(&context->LexemeIds, id);
+
         bool foundLit = false;
         for (size_t i = gDerivator_Node_mode_sum; i <= gDerivator_Node_mode_var; ++i) {                 //TODO make vars universal
             if (*gDerivator_Node_modeView[i] == *cur) {
@@ -244,6 +258,11 @@ gDerivator_status gDerivator_lexer(gDerivator *context, const char *buffer)
         *cur;
         ++cur;
     }
+
+    fprintf(stderr, "LexemeIds = {");
+    for (size_t i = 0; i < context->LexemeIds.len; ++i) 
+        fprintf(stderr, "%lu, ", context->LexemeIds.data[i]);
+    fprintf(stderr, "}\n");
     
     return gDerivator_status_OK;
 }
