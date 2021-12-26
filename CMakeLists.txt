@@ -49,7 +49,7 @@ endif()
 FetchContent_Declare(
   gtree
   GIT_REPOSITORY https://github.com/Lord-KA/gTree.git
-  GIT_TAG        release-1.0.3
+  # GIT_TAG        release-1.0.3 #TODO add release tag
 )
 if(NOT gtree_POPULATED)
   FetchContent_Populate(gtree)
