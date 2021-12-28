@@ -12,6 +12,7 @@ enum gDerivator_Node_mode {
     gDerivator_Node_mode_sub,
     gDerivator_Node_mode_mul,
     gDerivator_Node_mode_div,
+    gDerivator_Node_mode_exp,
     gDerivator_Node_mode_opBrack,
     gDerivator_Node_mode_clBrack,
     gDerivator_Node_mode_var,
@@ -27,6 +28,7 @@ static const char gDerivator_Node_modeView[gDerivator_Node_mode_CNT][10] = {
         "-",
         "*",
         "/",
+        "^",
         "(",
         ")",
         "x",
@@ -38,12 +40,16 @@ static const char gDerivator_Node_modeView[gDerivator_Node_mode_CNT][10] = {
 enum gDerivator_Node_func {
     gDerivator_Node_func_sin,
     gDerivator_Node_func_cos,
+    gDerivator_Node_func_ln,
+    gDerivator_Node_func_log,
     gDerivator_Node_func_CNT,
 };
 
 static const char gDerivator_Node_funcView[gDerivator_Node_func_CNT][10] = {
         "sin",
-        "cos"
+        "cos",
+        "ln",
+        "log",
     };
 
 struct gDerivator_Node 
@@ -54,7 +60,7 @@ struct gDerivator_Node
     size_t position;
 } typedef gDerivator_Node;
 
-static const char GDERIVATOR_DELIMS_LIST[] = "[]+-*/() ";
+static const char GDERIVATOR_DELIMS_LIST[] = " +-*/^()";
 
 typedef gDerivator_Node GTREE_TYPE;
 
@@ -323,28 +329,93 @@ gDerivator_status gDerivator_parser_expr(gDerivator *context, size_t start, size
     GDERIVATOR_CHECK_SELF_PTR(context);
     assert(start <  context->LexemeIds.len);
     assert(end   <= context->LexemeIds.len);
+    assert(start <= end);
 
     gDerivator_status status = gDerivator_status_OK;
 
-    size_t subStart = start, subEnd = -1;
+    size_t subStart = -1, subEnd = -1;
     size_t *data = context->LexemeIds.data;
     long brackCnt = 0;
-    for (subEnd = start; subEnd < end; ++subEnd) {
+
+    size_t firstPos = -1;
+    for (size_t i = start; i < end; ++i) {
+        gDerivator_Node *node = &(GDERIVATOR_NODE_BY_ID(data[i])->data);
+        if (node->mode == gDerivator_Node_mode_opBrack) 
+            ++brackCnt;
+        if (node->mode == gDerivator_Node_mode_clBrack) 
+            --brackCnt;
+
+        if ((node->mode == gDerivator_Node_mode_sum || node->mode == gDerivator_Node_mode_sub) && brackCnt == 0) {
+            if (firstPos == -1)
+                firstPos = i;
+            else 
+                firstPos = -2;
+        }
+    }
+
+    #ifdef EXTRA_VERBOSE
+        fprintf(stderr, "start = %lu\nend = %lu\nfirstPos = %lu\n", start, end, firstPos);
+    #endif
+    if (firstPos == -1) {
+        return gDerivator_parser_term(context, start, end, subRoot);
+    } else if (firstPos != -2) {
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, subRoot, data[firstPos]));
+
+        status = gDerivator_parser_term(context, start,        firstPos, data[firstPos]);
+        GDERIVATOR_ASSERT_LOG(status == gDerivator_status_OK, status);
+        status = gDerivator_parser_term(context, firstPos + 1, end,      data[firstPos]);
+
+        return status;
+    }
+
+    size_t sumRoot = -1;
+    bool isSum = true;
+    GDERIVATOR_TREE_CHECK(gTree_addChild(&context->tree, subRoot, &sumRoot, 
+                gDerivator_Node{gDerivator_Node_mode_sum, gDerivator_Node_func_CNT, 0, 0}));
+    brackCnt = 0;
+    for (subStart = subEnd = start; subEnd < end; ++subEnd) {
         gDerivator_Node *node = &(GDERIVATOR_NODE_BY_ID(data[subEnd])->data);
         if (node->mode == gDerivator_Node_mode_opBrack) 
             ++brackCnt;
         if (node->mode == gDerivator_Node_mode_clBrack) 
             --brackCnt;
+
         if ((node->mode == gDerivator_Node_mode_sum || node->mode == gDerivator_Node_mode_sub) && brackCnt == 0) {
-            GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, subRoot, data[subEnd]));
-            status = gDerivator_parser_term(context, subStart, subEnd, data[subEnd]);
+            #ifdef EXTRA_VERBOSE
+                fprintf(stderr, "subStart = %lu\nsubEnd = %lu\n", subStart, subEnd);
+            #endif
+            if (isSum) {
+                status = gDerivator_parser_term(context, subStart, subEnd, sumRoot);
+            } else {
+                size_t mulRoot = -1;
+                GDERIVATOR_TREE_CHECK(gTree_addChild(&context->tree, sumRoot, &mulRoot, 
+                        gDerivator_Node{gDerivator_Node_mode_mul, gDerivator_Node_func_CNT, 0, 0}));
+
+                GDERIVATOR_TREE_CHECK(gTree_addChild(&context->tree, mulRoot, NULL, 
+                        gDerivator_Node{gDerivator_Node_mode_num, gDerivator_Node_func_CNT, -1, 0}));
+
+                status = gDerivator_parser_term(context, subStart, subEnd, mulRoot);
+            }
             GDERIVATOR_ASSERT_LOG(status == gDerivator_status_OK, status);
-            subStart = subEnd + 1;
-            status = gDerivator_parser_expr(context, subStart, end, data[subEnd]);
-            return status;
+            isSum = (node->mode == gDerivator_Node_mode_sum);
+            GDERIVATOR_POOL_FREE(data[subEnd]);
+            ++subEnd;
+            subStart = subEnd;
         }
     }
-    status = gDerivator_parser_term(context, start, end, subRoot);
+    if (isSum) {
+        status = gDerivator_parser_term(context, subStart, subEnd, sumRoot);
+    } else {
+        size_t mulRoot = -1;
+        GDERIVATOR_TREE_CHECK(gTree_addChild(&context->tree, sumRoot, &mulRoot, 
+                gDerivator_Node{gDerivator_Node_mode_mul, gDerivator_Node_func_CNT, 0, 0}));
+
+        GDERIVATOR_TREE_CHECK(gTree_addChild(&context->tree, mulRoot, NULL, 
+                gDerivator_Node{gDerivator_Node_mode_num, gDerivator_Node_func_CNT, -1, 0}));
+
+        status = gDerivator_parser_term(context, subStart, subEnd, mulRoot);
+    }
+ 
     return status;
 }
 
@@ -353,28 +424,98 @@ gDerivator_status gDerivator_parser_term(gDerivator *context, size_t start, size
     GDERIVATOR_CHECK_SELF_PTR(context);
     assert(start <  context->LexemeIds.len);
     assert(end   <= context->LexemeIds.len);
+    assert(start <= end);
 
     gDerivator_status status = gDerivator_status_OK;
 
-    size_t subStart = start, subEnd = -1;
+    size_t subStart = -1, subEnd = -1;
     size_t *data = context->LexemeIds.data;
     long brackCnt = 0;
-    for (subEnd = start; subEnd < end; ++subEnd) {
+
+    size_t firstPos = -1;
+    for (size_t i = start; i < end; ++i) {
+        gDerivator_Node *node = &(GDERIVATOR_NODE_BY_ID(data[i])->data);
+        if (node->mode == gDerivator_Node_mode_opBrack) 
+            ++brackCnt;
+        if (node->mode == gDerivator_Node_mode_clBrack) 
+            --brackCnt;
+
+        if ((node->mode == gDerivator_Node_mode_mul || node->mode == gDerivator_Node_mode_div) && brackCnt == 0) {
+            if (firstPos == -1)
+                firstPos = i;
+            else 
+                firstPos = -2;
+        }
+    }
+
+    #ifdef EXTRA_VERBOSE
+        fprintf(stderr, "start = %lu\nend = %lu\nfirstPos = %lu\n", start, end, firstPos);
+    #endif
+    if (firstPos == -1) {
+        return gDerivator_parser_prior(context, start, end, subRoot);
+    } else if (firstPos != -2) {
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, subRoot, data[firstPos]));
+
+        status = gDerivator_parser_prior(context, start,        firstPos, data[firstPos]);
+        GDERIVATOR_ASSERT_LOG(status == gDerivator_status_OK, status);
+        status = gDerivator_parser_prior(context, firstPos + 1, end,      data[firstPos]);
+
+        return status;
+    }
+
+    size_t mulRoot = -1;
+    bool isMul = true;
+    GDERIVATOR_TREE_CHECK(gTree_addChild(&context->tree, subRoot, &mulRoot, 
+                gDerivator_Node{gDerivator_Node_mode_mul, gDerivator_Node_func_CNT, 0, 0}));
+    brackCnt = 0;
+    for (subStart = subEnd = start; subEnd < end; ++subEnd) {
         gDerivator_Node *node = &(GDERIVATOR_NODE_BY_ID(data[subEnd])->data);
         if (node->mode == gDerivator_Node_mode_opBrack) 
             ++brackCnt;
         if (node->mode == gDerivator_Node_mode_clBrack) 
             --brackCnt;
+
         if ((node->mode == gDerivator_Node_mode_mul || node->mode == gDerivator_Node_mode_div) && brackCnt == 0) {
-            GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, subRoot, data[subEnd]));
-            status = gDerivator_parser_prior(context, subStart, subEnd, data[subEnd]);
-            GDERIVATOR_ASSERT_LOG(status == gDerivator_status_OK, status);
-            subStart = subEnd + 1;
-            status = gDerivator_parser_expr(context, subStart, end, data[subEnd]);
-            return status;
+            #ifdef EXTRA_VERBOSE
+                fprintf(stderr, "subStart = %lu\nsubEnd = %lu\n", subStart, subEnd);
+            #endif
+            if (isMul) {
+                status = gDerivator_parser_prior(context, subStart, subEnd, mulRoot);
+                GDERIVATOR_ASSERT_LOG(status == gDerivator_status_OK, status);
+            } else {
+                size_t expRoot = -1;
+                GDERIVATOR_TREE_CHECK(gTree_addChild(&context->tree, mulRoot, &expRoot, 
+                        gDerivator_Node{gDerivator_Node_mode_exp, gDerivator_Node_func_CNT, 0, 0}));
+
+                status = gDerivator_parser_prior(context, subStart, subEnd, expRoot);
+
+                GDERIVATOR_TREE_CHECK(gTree_addChild(&context->tree, expRoot, NULL, 
+                        gDerivator_Node{gDerivator_Node_mode_num, gDerivator_Node_func_CNT, -1, 0}));
+                
+                GDERIVATOR_ASSERT_LOG(status == gDerivator_status_OK, status);
+            }
+            isMul = (node->mode == gDerivator_Node_mode_mul);
+            GDERIVATOR_POOL_FREE(data[subEnd]);
+            ++subEnd;
+            subStart = subEnd;
         }
     }
-    status = gDerivator_parser_prior(context, start, end, subRoot);
+   if (isMul) {
+        status = gDerivator_parser_prior(context, subStart, subEnd, mulRoot);
+        GDERIVATOR_ASSERT_LOG(status == gDerivator_status_OK, status);
+    } else {
+        size_t expRoot = -1;
+        GDERIVATOR_TREE_CHECK(gTree_addChild(&context->tree, mulRoot, &expRoot, 
+                gDerivator_Node{gDerivator_Node_mode_exp, gDerivator_Node_func_CNT, 0, 0}));
+
+        status = gDerivator_parser_prior(context, subStart, subEnd, expRoot);
+
+        GDERIVATOR_TREE_CHECK(gTree_addChild(&context->tree, expRoot, NULL, 
+                gDerivator_Node{gDerivator_Node_mode_num, gDerivator_Node_func_CNT, -1, 0}));
+                
+        GDERIVATOR_ASSERT_LOG(status == gDerivator_status_OK, status);
+    } 
+
     return status;
 }
 
@@ -383,6 +524,7 @@ gDerivator_status gDerivator_parser_prior(gDerivator *context, size_t start, siz
     GDERIVATOR_CHECK_SELF_PTR(context);
     assert(start <  context->LexemeIds.len);
     assert(end   <= context->LexemeIds.len);
+    assert(start <= end);
 
     gDerivator_status status = gDerivator_status_OK;
 

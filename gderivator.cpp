@@ -5,7 +5,7 @@ int main()
     gDerivator der;
     gDerivator_ctor(&der, stderr);
 
-    gDerivator_lexer(&der, "sin(1234 + 3) + 0x10 - 0.013 + x / cos(x - 12/13)");
+    gDerivator_lexer(&der, "123 * 456 * 789 / sin (13/14 + x * cos 3 * sin (13 *4))");
     gDerivator_parser(&der);
     
     FILE *out = fopen("dump.gv", "w");
