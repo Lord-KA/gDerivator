@@ -98,7 +98,8 @@ enum gDerivator_status {
     gDerivator_status_BadId,
     gDerivator_status_BadInput,
     gDerivator_status_EmptyLexer,
-    gDerivator_status_ParsingErr,
+    gDerivator_status_ParsingErr_UnknownLex,
+    gDerivator_status_ParsingErr_NoBrack,
     gDerivator_status_CNT,
 };
 
@@ -112,6 +113,8 @@ static const char gDerivator_statusMsg[gDerivator_status_CNT][MAX_LINE_LEN] = {
         "Bad node id provided",
         "WARNING: bad input provided",
         "WARNING: lexemes stack is empty, have you run lexer?",
+        "Parsing error: unknown lexemes sequence",
+        "Parsing error: no closing bracket",
     };
 
 #ifndef NLOGS
@@ -142,6 +145,12 @@ static const char gDerivator_statusMsg[gDerivator_status_CNT][MAX_LINE_LEN] = {
                             gDerivator_status_ObjPoolErr);                                        \
     id;                                                                                            \
 })
+
+#define GDERIVATOR_POOL_FREE(id) ({                                                           \
+    GDERIVATOR_ASSERT_LOG(gObjPool_free(&context->tree.pool, id) == gObjPool_status_OK,        \
+                            gDerivator_status_ObjPoolErr);                                      \
+})
+
 
 #define GDERIVATOR_TREE_CHECK(expr) ({                                             \
     GDERIVATOR_ASSERT_LOG((expr) == gTree_status_OK, gDerivator_status_TreeErr);    \
@@ -203,7 +212,9 @@ gDerivator_status gDerivator_lexer(gDerivator *context, const char *buffer)
     GENERIC(stack_clear)(&context->LexemeIds);
 
     while (*cur != '\0' && *cur != '\n') {
-        fprintf(stderr, "cur = %s\n", cur);
+        #ifdef EXTRA_VERBOSE
+            fprintf(stderr, "cur = %s\n", cur);
+        #endif  
         if (isspace(*cur)) {
             ++cur;
             continue;
@@ -223,12 +234,14 @@ gDerivator_status gDerivator_lexer(gDerivator *context, const char *buffer)
             }
         }
         if (foundLit) {
-            fprintf(stderr, "Found lit!\n");
-            fprintf(stderr, " cur = #%s#\n", cur);
+            #ifdef EXTRA_VERBOSE
+                fprintf(stderr, "Found lit!\n");
+                fprintf(stderr, " cur = #%s#\n", cur);
+            #endif
             continue;
         }
 
-        bool isFunc = false;
+        bool isFunc = false;                                                                              //TODO switch to Trim alg
         for (size_t i = 0; i < gDerivator_Node_func_CNT; ++i) {
             if (strncmp(cur, gDerivator_Node_funcView[i], strlen(gDerivator_Node_funcView[i])) == 0) {  //TODO check if '\n' is a valid problem
                 cur += strlen(gDerivator_Node_funcView[i]);
@@ -244,8 +257,10 @@ gDerivator_status gDerivator_lexer(gDerivator *context, const char *buffer)
             ++cur;
         }
         if (isFunc) {
-            fprintf(stderr, "Found func!");
-            fprintf(stderr, " cur = #%s#\n", cur);
+            #ifdef EXTRA_VERBOSE
+                fprintf(stderr, "Found func!");
+                fprintf(stderr, " cur = #%s#\n", cur);
+            #endif
             continue;
         }
 
@@ -271,20 +286,23 @@ gDerivator_status gDerivator_lexer(gDerivator *context, const char *buffer)
         ++cur;
     }
 
-    fprintf(stderr, "LexemeIds = {");
-    for (size_t i = 0; i < context->LexemeIds.len; ++i) 
-        fprintf(stderr, "%lu, ", context->LexemeIds.data[i]);
-    fprintf(stderr, "}\n");
+    
+    #ifdef EXTRA_VERBOSE
+        fprintf(stderr, "LexemeIds = {");
+        for (size_t i = 0; i < context->LexemeIds.len; ++i) 
+            fprintf(stderr, "%lu, ", context->LexemeIds.data[i]);
+        fprintf(stderr, "}\n");
+    #endif
     
     return gDerivator_status_OK;
 }
 
 
-gDerivator_status gDerivator_parser_expr(gDerivator *context, size_t start, size_t end, size_t subRoot);        //TODO
+gDerivator_status gDerivator_parser_expr (gDerivator *context, size_t start, size_t end, size_t subRoot);        //TODO
 
 gDerivator_status gDerivator_parser_prior(gDerivator *context, size_t start, size_t end, size_t subRoot);
 
-gDerivator_status gDerivator_parser_term(gDerivator *context, size_t start, size_t end, size_t subRoot);
+gDerivator_status gDerivator_parser_term (gDerivator *context, size_t start, size_t end, size_t subRoot);
 
 
 
@@ -294,16 +312,10 @@ gDerivator_status gDerivator_parser(gDerivator *context)
     GDERIVATOR_CHECK_SELF_PTR(context);
     size_t len = context->LexemeIds.len;
 
-    GDERIVATOR_ASSERT_LOG(len != 0 && len < 10000, gDerivator_status_EmptyLexer);      //TODO get constant into `static const`
+    GDERIVATOR_ASSERT_LOG(len != 0 && len < 10000, gDerivator_status_EmptyLexer);      //TODO put constant into `static const`
 
     return gDerivator_parser_expr(context, 0, len, context->tree.root);
 }
-
-struct gDerivator_parser_context {
-    size_t start, end;  
-    size_t errorPos;
-    gTree *tree;
-} typedef gDerivator_parser_context;
 
 
 gDerivator_status gDerivator_parser_expr(gDerivator *context, size_t start, size_t end, size_t subRoot)
@@ -375,13 +387,13 @@ gDerivator_status gDerivator_parser_prior(gDerivator *context, size_t start, siz
     gDerivator_status status = gDerivator_status_OK;
 
     size_t *data = context->LexemeIds.data;
-    if (GDERIVATOR_NODE_BY_ID(data[start])->data.mode == gDerivator_Node_mode_opBrack) {            //TODO maybe free nodes with brackets
-        if (GDERIVATOR_NODE_BY_ID(data[end - 1])->data.mode == gDerivator_Node_mode_clBrack) {
-            status = gDerivator_parser_expr(context, start + 1, end - 1, subRoot);
-        } else {
-            fprintf(stderr, "ERROR: parsing error, no closing bracket!\n"); //TODO
-            status = gDerivator_status_ParsingErr;
-        }
+    if (GDERIVATOR_NODE_BY_ID(data[start])->data.mode == gDerivator_Node_mode_opBrack) {            
+        GDERIVATOR_ASSERT_LOG(GDERIVATOR_NODE_BY_ID(data[end - 1])->data.mode == gDerivator_Node_mode_clBrack,
+                                    gDerivator_status_ParsingErr_NoBrack);
+        status = gDerivator_parser_expr(context, start + 1, end - 1, subRoot);
+        GDERIVATOR_POOL_FREE(data[start]);
+        GDERIVATOR_POOL_FREE(data[end - 1]);
+
     } else if (end - start == 1) {
         GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, subRoot, data[start]));
 
@@ -390,8 +402,7 @@ gDerivator_status gDerivator_parser_prior(gDerivator *context, size_t start, siz
         status = gDerivator_parser_prior(context, start + 1, end, data[start]);
 
     } else {
-        fprintf(stderr, "ERROR: parsing error, unknown lexemes sequence provided to parser_prior()!\n"); //TODO
-        status = gDerivator_status_ParsingErr;
+        GDERIVATOR_ASSERT_LOG(false, gDerivator_status_ParsingErr_UnknownLex);
     }
     return status;
 }
