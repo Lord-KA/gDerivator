@@ -111,7 +111,7 @@ enum gDerivator_status {
     gDerivator_status_CNT,
 };
 
-static const char gDerivator_statusMsg[gDerivator_status_CNT][MAX_LINE_LEN] = {
+static const char gDerivator_statusMsg[gDerivator_status_CNT + 1][MAX_LINE_LEN] = {
         "OK",
         "Bad structure pointer provided",
         "Error in gTree",
@@ -124,10 +124,17 @@ static const char gDerivator_statusMsg[gDerivator_status_CNT][MAX_LINE_LEN] = {
         "WARNING: expression tree is empty, have you run the parser?",
         "Parsing error: unknown lexemes sequence",
         "Parsing error: no closing bracket",
+        "UNKNOWN ERROR CODE!",
     };
 
 #ifndef NLOGS
-#define GDERIVATOR_ASSERT_LOG(expr, errCode) ASSERT_LOG(expr, errCode, gDerivator_statusMsg[errCode], context->logStream)
+#define GDERIVATOR_ASSERT_LOG(expr, errCode) ({                                         \
+        if (errCode >= gDerivator_status_CNT || errCode < 0)  {                          \
+            ASSERT_LOG(false, gDerivator_status_CNT,                                      \
+                    gDerivator_statusMsg[gDerivator_status_CNT], context->logStream);      \
+        }                                                                                   \
+        ASSERT_LOG(expr, errCode, gDerivator_statusMsg[errCode], context->logStream);        \
+    })
 #else
 #define GDERIVATOR_ASSERT_LOG(expr, errCode) ASSERT_LOG(expr, errCode, gDerivator_statusMsg[errCode], NULL)
 #endif
@@ -135,7 +142,11 @@ static const char gDerivator_statusMsg[gDerivator_status_CNT][MAX_LINE_LEN] = {
 #define GDERIVATOR_CHECK_SELF_PTR(ptr) ASSERT_LOG(gPtrValid(ptr), gDerivator_status_BadStructPtr,     \
                                                  gDerivator_statusMsg[gDerivator_status_BadStructPtr], \
                                                  stderr)
-#define GDERIVATOR_IS_OK(status) GDERIVATOR_ASSERT_LOG(status == gDerivator_status_OK, status);
+#define GDERIVATOR_IS_OK(expr) ({                                       \
+        gDerivator_status s = (expr);                               \
+        fprintf(stderr, "STATUS IN IS_OK = %d\n", s);\
+        GDERIVATOR_ASSERT_LOG(s == gDerivator_status_OK, s);    \
+    })
 
 #define GDERIVATOR_NODE_BY_ID(id) ({                                                          \
     assert(id != -1);                                                                          \
@@ -558,7 +569,7 @@ static gDerivator_status gDerivator_parser_prior(gDerivator *context,
 }
 
 
-static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t root)
+static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t rootId)          //TODO refactor with checking gTree_status codes
 {
     GDERIVATOR_CHECK_SELF_PTR(context);
 
@@ -566,7 +577,7 @@ static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t r
     GDERIVATOR_ASSERT_LOG(len != 0 && len < GDERIVATOR_LEX_LIM, gDerivator_status_EmptyLexer);
     GDERIVATOR_ASSERT_LOG(GDERIVATOR_NODE_BY_ID(context->tree.root)->child != -1, gDerivator_status_EmptyTree);
  
-    gTree_Node *node = GDERIVATOR_NODE_BY_ID(root);
+    gTree_Node *node = GDERIVATOR_NODE_BY_ID(rootId);
     gDerivator_status status = gDerivator_status_OK;
     size_t childId = node->child;
 
@@ -578,7 +589,49 @@ static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t r
             childId = GDERIVATOR_NODE_BY_ID(childId)->sibling;
         }
     } else if (node->data.mode == gDerivator_Node_mode_mul) {
+        size_t sumNodeId = GDERIVATOR_POOL_ALLOC();  
+        gTree_Node *sumNode = GDERIVATOR_NODE_BY_ID(sumNodeId);
+        sumNode->data.mode = gDerivator_Node_mode_sum;
         
+        size_t siblingId = childId;
+        while (siblingId != -1) {
+            size_t mulNodeId = GDERIVATOR_POOL_ALLOC();
+            gTree_Node *mulNode = GDERIVATOR_NODE_BY_ID(mulNodeId);
+            mulNode->data.mode = gDerivator_Node_mode_mul;
+            
+            size_t iterId = childId;
+            while (iterId != -1) {
+                if (iterId != siblingId) {            
+                    size_t clonedId = -1;
+                    GDERIVATOR_TREE_CHECK(gTree_cloneSubtree (&context->tree, iterId,   &clonedId));
+                    fprintf(stderr, "iterId = %lu; clonedId = %lu; mulNodeId = %lu\n", iterId, clonedId, mulNodeId);
+                    // GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, mulNodeId, clonedId));
+                }
+                iterId = GDERIVATOR_NODE_BY_ID(iterId)->sibling;
+            }
+
+            size_t clonedId = -1;
+            GDERIVATOR_TREE_CHECK(gTree_cloneSubtree(&context->tree, siblingId, &clonedId));
+            fprintf(stderr, "siblingId = %lu; clonedId = %lu; mulNodeId = %lu; sumNodeId = %lu\n", siblingId, clonedId, mulNodeId, sumNodeId);
+            GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, mulNodeId, clonedId));
+            gTree_Node *tmp = GDERIVATOR_NODE_BY_ID(clonedId);
+            fprintf(stderr, "Cloned: parent = %lu, child = %lu, sibling = %lu\n", tmp->parent, tmp->child, tmp->sibling);       //TODO debug the problem somewhere in addExistChild, it somehow changes subChildren
+            // GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, sumNodeId, mulNodeId));
+            GDERIVATOR_IS_OK(gDerivator_derivate(context, clonedId));
+
+            siblingId = GDERIVATOR_NODE_BY_ID(siblingId)->sibling;
+        }
+
+        GDERIVATOR_TREE_CHECK(gTree_replaceNode(&context->tree, rootId, sumNodeId));
+        // GDERIVATOR_TREE_CHECK(gTree_killSubtree(&context->tree, rootId));    //TODO
+    } else if (node->data.mode == gDerivator_Node_mode_num) {
+        node->data.value = 0;
+    } else if (node->data.mode == gDerivator_Node_mode_var) {
+        node->data.value = 1;
+        node->data.mode = gDerivator_Node_mode_num;
+    } else {
+        fprintf(stderr, "ERROR: this feature has not been implemented yet!\n");
+        assert(false);
     }
 
     return status;
