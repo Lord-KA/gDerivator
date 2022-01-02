@@ -39,7 +39,7 @@ endif()
 FetchContent_Declare(
   gobjpool
   GIT_REPOSITORY https://github.com/Lord-KA/gObjPool.git
-  GIT_TAG        release-1.0.2
+  GIT_TAG        release-1.0.3.0
 )
 if(NOT gobjpool_POPULATED)
   FetchContent_Populate(gobjpool)
@@ -59,7 +59,7 @@ endif()
 FetchContent_Declare(
   gstack
   GIT_REPOSITORY https://github.com/lord-KA/hopefullyunkillablestack.git
-  # GIT_TAG        release-1.0.3 #TODO add release tag
+  GIT_TAG        release-1.1.1
 )
 if(NOT gstack_POPULATED)
   FetchContent_Populate(gstack)
