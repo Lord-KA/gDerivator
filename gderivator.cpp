@@ -6,7 +6,8 @@ int main()
     gDerivator_ctor(&der, stderr);
 
     // gDerivator_lexer(&der, "123 * x * 456 * 8495 + x * 12 * (345 - 567)");
-    gDerivator_lexer(&der, "cos(13 * x + 134 - sin 12)");
+    // gDerivator_lexer(&der, "cos(13 * x + 134 - sin 12)");
+    gDerivator_lexer(&der, "x ^ 13");
     gDerivator_parser(&der);
     // for (size_t i = 0; i < 8; ++i)
     //     gDerivator_dumpNode(&der, i);
