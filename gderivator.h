@@ -697,6 +697,64 @@ static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t r
         }
         GDERIVATOR_TREE_CHECK(gTree_replaceNode(&context->tree, rootId, sumNodeId));
         GDERIVATOR_TREE_CHECK(gTree_killSubtree(&context->tree, rootId));
+
+    } else if (node->data.mode == gDerivator_Node_mode_div) {
+        size_t leftChildId = childId;
+        gTree_Node *leftChild = GDERIVATOR_NODE_BY_ID(leftChildId);
+        size_t rightChildId = leftChild->sibling;
+        gTree_Node *rightChild = GDERIVATOR_NODE_BY_ID(rightChildId);
+
+        leftChild->sibling  = -1;
+        assert(rightChild->sibling == -1);
+
+        node->child = -1;
+        
+        size_t subNodeId = GDERIVATOR_POOL_ALLOC();
+        gTree_Node *subNode = GDERIVATOR_NODE_BY_ID(subNodeId);
+        subNode->data.mode = gDerivator_Node_mode_sub;
+        
+        size_t mulNodeId = GDERIVATOR_POOL_ALLOC();
+        gTree_Node *mulNode = GDERIVATOR_NODE_BY_ID(mulNodeId);
+        mulNode->data.mode = gDerivator_Node_mode_mul;
+
+        size_t rightCloneId = -1;
+        GDERIVATOR_TREE_CHECK(gTree_cloneSubtree(&context->tree, rightChildId, &rightCloneId));
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, mulNodeId, rightCloneId));
+        GDERIVATOR_TREE_CHECK(gTree_cloneSubtree(&context->tree, rightChildId, &rightCloneId));
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, mulNodeId, rightCloneId));
+
+
+        size_t leftSubMulNodeId = GDERIVATOR_POOL_ALLOC();
+        gTree_Node *leftSubMulNode = GDERIVATOR_NODE_BY_ID(leftSubMulNodeId);
+        leftSubMulNode->data.mode = gDerivator_Node_mode_mul;
+
+        size_t rightSubMulNodeId = GDERIVATOR_POOL_ALLOC();
+        gTree_Node *rightSubMulNode = GDERIVATOR_NODE_BY_ID(rightSubMulNodeId);
+        rightSubMulNode->data.mode = gDerivator_Node_mode_mul;
+
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, subNodeId, leftSubMulNodeId));
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, subNodeId, rightSubMulNodeId));
+        
+        size_t leftCloneId = -1;
+        GDERIVATOR_TREE_CHECK(gTree_cloneSubtree(&context->tree, leftChildId, &leftCloneId));
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, leftSubMulNodeId, leftCloneId));
+        GDERIVATOR_TREE_CHECK(gTree_cloneSubtree(&context->tree, rightChildId, &rightCloneId));
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, leftSubMulNodeId, rightCloneId));
+        GDERIVATOR_IS_OK(gDerivator_derivate(context, rightCloneId));
+
+        GDERIVATOR_TREE_CHECK(gTree_cloneSubtree(&context->tree, leftChildId, &leftCloneId));
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rightSubMulNodeId, leftCloneId));
+        GDERIVATOR_TREE_CHECK(gTree_cloneSubtree(&context->tree, rightChildId, &rightCloneId));
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rightSubMulNodeId, rightCloneId));
+        GDERIVATOR_IS_OK(gDerivator_derivate(context, leftCloneId));
+
+       
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId, subNodeId));
+        GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId, mulNodeId));
+
+        GDERIVATOR_TREE_CHECK(gTree_killSubtree(&context->tree, leftChildId));
+        GDERIVATOR_TREE_CHECK(gTree_killSubtree(&context->tree, rightChildId));
+
     } else if (node->data.mode == gDerivator_Node_mode_num) {
         node->data.value = 0;
     } else if (node->data.mode == gDerivator_Node_mode_var) {
@@ -729,7 +787,7 @@ static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, mulNodeId, numNodeId));
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, mulNodeId, rootId));
         } else {
-            fprintf(stderr, "ERROR: this feature has not been implemented yet!\n");
+            fprintf(stderr, "ERROR: func Exp derivation has not been implemented yet!\n");
             assert(false);
         }
     } else if (node->data.mode == gDerivator_Node_mode_func) {
@@ -777,7 +835,7 @@ static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, divNodeId, childId));          
 
         } else {
-            fprintf(stderr, "ERROR: this feature has not been implemented yet!\n");
+            fprintf(stderr, "ERROR: this func derivation has not been implemented yet!\n");
             assert(false);
         }
         GDERIVATOR_TREE_CHECK(gTree_replaceNode(&context->tree, rootId, mulNodeId));
@@ -785,7 +843,7 @@ static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t r
 
  
     } else {
-        fprintf(stderr, "ERROR: this feature has not been implemented yet!\n");
+        fprintf(stderr, "ERROR: this mode derivation has not been implemented yet!\n");
         assert(false);
     }
 
