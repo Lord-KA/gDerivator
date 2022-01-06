@@ -181,6 +181,9 @@ static const char gDerivator_statusMsg[gDerivator_status_CNT + 1][MAX_LINE_LEN] 
 })
 
 
+#define GDERIVATOR_ID_CHECK(id) GDERIVATOR_ASSERT_LOG(gObjPool_idValid(&context->tree.pool, id), gDerivator_status_BadId)
+
+
 struct gDerivator {
     gTree tree;
     FILE *logStream;
@@ -191,6 +194,8 @@ struct gDerivator {
 
 gDerivator_status gDerivator_dumpNode(gDerivator *context, size_t id) 
 {
+    GDERIVATOR_CHECK_SELF_PTR(context);
+    GDERIVATOR_ID_CHECK(id);
     FILE *out = context->logStream;
     fprintf(out, "NODE %lu dump:\n", id);
     gTree_Node *node = GDERIVATOR_NODE_BY_ID(id);
@@ -361,6 +366,7 @@ static gDerivator_status gDerivator_parser_expr(gDerivator *context,
                                                 const size_t subRoot)
 {
     GDERIVATOR_CHECK_SELF_PTR(context);
+    GDERIVATOR_ID_CHECK(subRoot);
     assert(start <  context->LexemeIds.len);
     assert(end   <= context->LexemeIds.len);
     assert(start <= end);
@@ -459,6 +465,7 @@ static gDerivator_status gDerivator_parser_term(gDerivator *context,
                                                 const size_t subRoot)
 {
     GDERIVATOR_CHECK_SELF_PTR(context);
+    GDERIVATOR_ID_CHECK(subRoot);
     assert(start <  context->LexemeIds.len);
     assert(end   <= context->LexemeIds.len);
     assert(start <= end);
@@ -532,8 +539,7 @@ static gDerivator_status gDerivator_parser_term(gDerivator *context,
             }
             isMul = (node->mode == gDerivator_Node_mode_mul);
             GDERIVATOR_POOL_FREE(data[subEnd]);
-            ++subEnd;
-            subStart = subEnd;
+            subStart = subEnd + 1;
         }
     }
    if (isMul) {
@@ -560,6 +566,7 @@ static gDerivator_status gDerivator_parser_expn(gDerivator *context,
                                                 const size_t root)
 {
     GDERIVATOR_CHECK_SELF_PTR(context);
+    GDERIVATOR_ID_CHECK(root);
     assert(start <  context->LexemeIds.len);
     assert(end   <= context->LexemeIds.len);
     assert(start <= end);
@@ -614,6 +621,7 @@ static gDerivator_status gDerivator_parser_prior(gDerivator *context,
                                                  const size_t subRoot)
 {
     GDERIVATOR_CHECK_SELF_PTR(context);
+    GDERIVATOR_ID_CHECK(subRoot);
     assert(start <  context->LexemeIds.len);
     assert(end   <= context->LexemeIds.len);
     assert(start <= end);
@@ -645,6 +653,7 @@ static gDerivator_status gDerivator_parser_prior(gDerivator *context,
 static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t rootId)          
 {
     GDERIVATOR_CHECK_SELF_PTR(context);
+    GDERIVATOR_ID_CHECK(rootId);
 
     size_t len = context->LexemeIds.len;
     GDERIVATOR_ASSERT_LOG(len != 0 && len < GDERIVATOR_LEX_LIM, gDerivator_status_EmptyLexer);
@@ -848,4 +857,92 @@ static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t r
     }
 
     return status;
+}
+
+
+static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t rootId)
+{
+    GDERIVATOR_CHECK_SELF_PTR(context);
+    GDERIVATOR_ID_CHECK(rootId);
+    gDerivator_status status = gDerivator_status_OK;
+
+    size_t childId = GDERIVATOR_NODE_BY_ID(rootId)->child;
+
+    while (childId != -1) {
+        size_t siblingId = GDERIVATOR_NODE_BY_ID(childId)->sibling;
+        gDerivator_optimize(context, childId);
+        childId = siblingId;
+    }
+
+    gTree_Node *node = GDERIVATOR_NODE_BY_ID(rootId);
+    gTree_Node *child = NULL;
+    childId = GDERIVATOR_NODE_BY_ID(rootId)->child;
+
+    if (node->data.mode == gDerivator_Node_mode_mul) {
+        double mulNum = 1;
+        double powVar = 0;
+        bool calculable = true;
+        while (childId != -1) {
+            fprintf(stderr, "childId = %lu\n", childId);
+            child = GDERIVATOR_NODE_BY_ID(childId);
+            size_t siblingId = child->sibling;
+            if (child->data.mode == gDerivator_Node_mode_num) {
+                mulNum *= child->data.value;
+                GDERIVATOR_TREE_CHECK(gTree_delSubtree(&context->tree, childId));
+            } else {
+                calculable = false;
+                if (child->data.mode == gDerivator_Node_mode_var) {
+                    powVar += 1;
+                    GDERIVATOR_TREE_CHECK(gTree_delSubtree(&context->tree, childId));
+                }
+            }
+            childId = siblingId;
+        }
+
+        if (calculable || mulNum == 0) {            //TODO change to EPS comp everywhere
+            size_t numNodeId = GDERIVATOR_POOL_ALLOC();
+            gTree_Node *numNode = GDERIVATOR_NODE_BY_ID(numNodeId);
+            numNode->data.mode  = gDerivator_Node_mode_num;
+            numNode->data.value = mulNum;
+            GDERIVATOR_TREE_CHECK(gTree_replaceNode(&context->tree, rootId, numNodeId));
+            GDERIVATOR_TREE_CHECK(gTree_killSubtree(&context->tree, rootId));
+
+            return gDerivator_status_OK;
+        } else if (mulNum != 1) {
+            size_t numNodeId = GDERIVATOR_POOL_ALLOC();
+            gTree_Node *numNode = GDERIVATOR_NODE_BY_ID(numNodeId);
+            numNode->data.mode  = gDerivator_Node_mode_num;
+            numNode->data.value = mulNum;
+            GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId, numNodeId));
+        }
+
+        if (powVar == 1) {
+            size_t varNodeId = GDERIVATOR_POOL_ALLOC();
+            gTree_Node *varNode = GDERIVATOR_NODE_BY_ID(varNodeId);
+            varNode->data.mode  = gDerivator_Node_mode_var;
+            GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId, varNodeId));
+        } else if (powVar != 0) {
+            size_t expNodeId = GDERIVATOR_POOL_ALLOC();
+            gTree_Node *expNode = GDERIVATOR_NODE_BY_ID(expNodeId);
+            expNode->data.mode  = gDerivator_Node_mode_exp;
+
+            size_t varNodeId = GDERIVATOR_POOL_ALLOC();
+            gTree_Node *varNode = GDERIVATOR_NODE_BY_ID(varNodeId);
+            varNode->data.mode  = gDerivator_Node_mode_var;
+
+            size_t numNodeId = GDERIVATOR_POOL_ALLOC();
+            gTree_Node *numNode = GDERIVATOR_NODE_BY_ID(numNodeId);
+            numNode->data.mode  = gDerivator_Node_mode_num;
+            numNode->data.value = powVar;
+
+            GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, expNodeId, varNodeId));
+            GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, expNodeId, numNodeId));
+            GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId,    expNodeId));
+        }
+ 
+
+       
+    }
+  
+    return gDerivator_status_OK;
 }
