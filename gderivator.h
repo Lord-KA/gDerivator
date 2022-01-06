@@ -950,8 +950,7 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, expNodeId, numNodeId));
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId,    expNodeId));
         }
-    }
-    if (node->data.mode == gDerivator_Node_mode_sum) {
+    } else if (node->data.mode == gDerivator_Node_mode_sum) {
         double sumNum = 0;
         double sumVar = 0;
         bool calculable = true;
@@ -1025,8 +1024,45 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, mulNodeId, numNodeId));
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId,    mulNodeId));
         }
+    } else if (node->data.mode == gDerivator_Node_mode_sub) {
+        GDERIVATOR_ID_CHECK(childId);
+        gTree_Node *child = GDERIVATOR_NODE_BY_ID(childId);
+        size_t siblingId = child->sibling;
+        GDERIVATOR_ID_CHECK(siblingId);
+        gTree_Node *sibling = GDERIVATOR_NODE_BY_ID(siblingId);
 
+        if (child->data.mode == gDerivator_Node_mode_num &&
+                sibling->data.mode == gDerivator_Node_mode_num) {
+            double res = child->data.value - sibling->data.value;
+            size_t numNodeId = GDERIVATOR_POOL_ALLOC();
+            gTree_Node *numNode = GDERIVATOR_NODE_BY_ID(numNodeId);
+            numNode->data.mode  = gDerivator_Node_mode_num;
+            numNode->data.value = res;
+            GDERIVATOR_TREE_CHECK(gTree_replaceNode(&context->tree, rootId, numNodeId));
+            GDERIVATOR_TREE_CHECK(gTree_killSubtree(&context->tree, rootId));
+        }
+    } else if (node->data.mode == gDerivator_Node_mode_div) {
+        GDERIVATOR_ID_CHECK(childId);
+        gTree_Node *child = GDERIVATOR_NODE_BY_ID(childId);
+        size_t siblingId = child->sibling;
+        GDERIVATOR_ID_CHECK(siblingId);
+        gTree_Node *sibling = GDERIVATOR_NODE_BY_ID(siblingId);
+
+        if (child->data.mode == gDerivator_Node_mode_num &&
+                sibling->data.mode == gDerivator_Node_mode_num) {
+            double res = child->data.value / sibling->data.value;
+            size_t numNodeId = GDERIVATOR_POOL_ALLOC();
+            gTree_Node *numNode = GDERIVATOR_NODE_BY_ID(numNodeId);
+            numNode->data.mode  = gDerivator_Node_mode_num;
+            numNode->data.value = res;
+            GDERIVATOR_TREE_CHECK(gTree_replaceNode(&context->tree, rootId, numNodeId));
+            GDERIVATOR_TREE_CHECK(gTree_killSubtree(&context->tree, rootId));
+        } else if (sibling->data.mode == gDerivator_Node_mode_num && sibling->data.value == 1) {
+            child->sibling = -1;
+            GDERIVATOR_TREE_CHECK(gTree_replaceNode(&context->tree, rootId, childId));
+            GDERIVATOR_POOL_FREE(rootId);
+            GDERIVATOR_POOL_FREE(siblingId);
+        }
     }
-  
     return gDerivator_status_OK;
 }
