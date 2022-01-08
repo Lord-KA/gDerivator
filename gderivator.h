@@ -37,6 +37,21 @@ static const char gDerivator_Node_modeView[gDerivator_Node_mode_CNT][10] = {
         "UNKNOWN",
     };
 
+static const char gDerivator_Node_modeViewLatex[gDerivator_Node_mode_CNT][10] = {
+        "NONE",
+        "+",
+        "-",
+        "\\cdot",
+        "\\frac",
+        "^",
+        "(",
+        ")",
+        "x",
+        "FUNC",
+        "NUM",
+        "UNKNOWN",
+    };
+
 enum gDerivator_Node_func {
     gDerivator_Node_func_sin,
     gDerivator_Node_func_cos,
@@ -108,6 +123,7 @@ enum gDerivator_status {
     gDerivator_status_EmptyTree,
     gDerivator_status_ParsingErr_UnknownLex,
     gDerivator_status_ParsingErr_NoBrack,
+    gDerivator_status_DecompositionErr,
     gDerivator_status_CNT,
 };
 
@@ -124,6 +140,7 @@ static const char gDerivator_statusMsg[gDerivator_status_CNT + 1][MAX_LINE_LEN] 
         "WARNING: expression tree is empty, have you run the parser?",
         "Parsing error: unknown lexemes sequence",
         "Parsing error: no closing bracket",
+        "Some error during tree decomposition",
         "UNKNOWN ERROR CODE!",
     };
 
@@ -340,7 +357,7 @@ static gDerivator_status gDerivator_lexer(gDerivator *context, const char *buffe
 }
 
 
-static gDerivator_status gDerivator_parser_expr (gDerivator *context, const size_t start, const size_t end, const size_t subRoot);        //TODO
+static gDerivator_status gDerivator_parser_expr (gDerivator *context, const size_t start, const size_t end, const size_t subRoot);
 
 static gDerivator_status gDerivator_parser_prior(gDerivator *context, const size_t start, const size_t end, const size_t subRoot);
 
@@ -864,7 +881,6 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
 {
     GDERIVATOR_CHECK_SELF_PTR(context);
     GDERIVATOR_ID_CHECK(rootId);
-    gDerivator_status status = gDerivator_status_OK;
 
     size_t childId = GDERIVATOR_NODE_BY_ID(rootId)->child;
 
@@ -1064,5 +1080,93 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             GDERIVATOR_POOL_FREE(siblingId);
         }
     }
+    return gDerivator_status_OK;
+}
+
+
+static gDerivator_status gDerivator_dumpSubtreeLatex(const gDerivator *context, const size_t rootId, FILE *out)
+{
+    GDERIVATOR_CHECK_SELF_PTR(context);
+    GDERIVATOR_ID_CHECK(rootId);
+
+    gTree_Node *node = GDERIVATOR_NODE_BY_ID(rootId);
+    const char *op = gDerivator_Node_modeViewLatex[node->data.mode];
+    size_t childId   = node->child;
+    size_t siblingId = -1;
+    gTree_Node *child = NULL;
+
+    fprintf(out, "{");
+    switch (node->data.mode) {
+        case gDerivator_Node_mode_sum:
+        case gDerivator_Node_mode_mul: 
+            child = GDERIVATOR_NODE_BY_ID(childId);
+            while (child->sibling != -1) {
+                gDerivator_dumpSubtreeLatex(context, childId, out);
+                fprintf(out, "%s", op);
+                childId = child->sibling;
+                child = GDERIVATOR_NODE_BY_ID(childId);
+            }
+            gDerivator_dumpSubtreeLatex(context, childId, out);
+            break;
+
+        case gDerivator_Node_mode_sub:
+            siblingId = GDERIVATOR_NODE_BY_ID(childId)->sibling;
+
+            gDerivator_dumpSubtreeLatex(context, childId, out);
+            fprintf(out, "%s", op);
+            gDerivator_dumpSubtreeLatex(context, siblingId, out);
+            break;
+
+        case gDerivator_Node_mode_div:
+            siblingId = GDERIVATOR_NODE_BY_ID(childId)->sibling;
+            fprintf(out, "%s{", op);
+            gDerivator_dumpSubtreeLatex(context, childId, out);
+            fprintf(out, "}{", op);
+            gDerivator_dumpSubtreeLatex(context, siblingId, out);
+            fprintf(out, "}", op);
+            
+
+        case gDerivator_Node_mode_exp:
+            fprintf(out, "{");
+            siblingId = GDERIVATOR_NODE_BY_ID(childId)->sibling;
+
+            gDerivator_dumpSubtreeLatex(context, childId, out);
+            fprintf(out, "}%s{", op);
+            gDerivator_dumpSubtreeLatex(context, siblingId, out);
+            fprintf(out, "}", op);
+            break;
+
+        case gDerivator_Node_mode_num:
+            fprintf(out, " %.1lf ", node->data.value);
+            break;
+
+        case gDerivator_Node_mode_var:
+            fprintf(out, " %s ", op);
+            break;
+        
+        case gDerivator_Node_mode_func:
+            fprintf(out, "\\%s{", gDerivator_Node_funcView[node->data.func]);
+            gDerivator_dumpSubtreeLatex(context, childId, out);
+            fprintf(out, "}");
+            break;
+
+        default:
+            GDERIVATOR_ASSERT_LOG(false, gDerivator_status_DecompositionErr);
+    }
+    fprintf(out, "}");
+
+    return gDerivator_status_OK;
+}
+
+
+static gDerivator_status gDerivator_dumpLatex(const gDerivator *context, FILE *out)
+{
+    GDERIVATOR_CHECK_SELF_PTR(context);
+
+    fprintf(out, "\\documentclass[a4paper]{article}\n\\begin{document}\n\t\\[");
+
+    size_t realRootId = GDERIVATOR_NODE_BY_ID(context->tree.root)->child;
+    GDERIVATOR_IS_OK(gDerivator_dumpSubtreeLatex(context, realRootId, out));
+    fprintf(out, "\\]\n\\end{document}\n");
     return gDerivator_status_OK;
 }

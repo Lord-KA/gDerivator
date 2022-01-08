@@ -5,9 +5,9 @@ int main()
     gDerivator der;
     gDerivator_ctor(&der, stderr);
 
-    gDerivator_lexer(&der, "(123 * x ^ 456 * 8495 + x * 12 * (345 - 567)) / cos(13 * x + 134 - sin 12)");
+    // gDerivator_lexer(&der, "(123 * x ^ 456 * 8495 + x * 12 * (345 - 567)) / cos(13 * x + 134 - sin 12)");
     // gDerivator_lexer(&der, " 1 * 2 * 3 * x * x * 100 * (11 * 13) + 1");
-    // gDerivator_lexer(&der, "x * x * (11 * 13)");
+    gDerivator_lexer(&der, "x + sin(11 * 13 * x) / 10");
     gDerivator_parser(&der);
     // for (size_t i = 0; i < 8; ++i)
     //     gDerivator_dumpNode(&der, i);
@@ -27,6 +27,10 @@ int main()
     
     out = fopen("after.gv", "w");
     gTree_dumpPoolGraphViz(&der.tree, out);
+    fclose(out);
+
+    out = fopen("result.tex", "w");
+    gDerivator_dumpLatex(&der, out);
     fclose(out);
 
     gDerivator_dtor(&der);
