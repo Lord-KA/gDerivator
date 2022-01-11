@@ -39,7 +39,7 @@ endif()
 FetchContent_Declare(
   gobjpool
   GIT_REPOSITORY https://github.com/Lord-KA/gObjPool.git
-  GIT_TAG        release-1.0.3.0
+  GIT_TAG        release-1.0.4
 )
 if(NOT gobjpool_POPULATED)
   FetchContent_Populate(gobjpool)
@@ -49,7 +49,7 @@ endif()
 FetchContent_Declare(
   gtree
   GIT_REPOSITORY https://github.com/Lord-KA/gTree.git
-  GIT_TAG        release-1.1.0
+  GIT_TAG        release-1.1.0.1
 )
 if(NOT gtree_POPULATED)
   FetchContent_Populate(gtree)
@@ -75,7 +75,7 @@ set_target_properties(gmock_main PROPERTIES FOLDER extern)
 
 enable_testing()
 
-add_executable(gderivator gderivator.cpp gderivator.h)
+add_executable(gderivator gderivator.cpp gderivator.h gderivator-main.cpp)
 
 target_link_libraries(
     #    gderivator-test?
