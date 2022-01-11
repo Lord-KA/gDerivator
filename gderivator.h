@@ -85,6 +85,8 @@ static const size_t MAX_LINE_LEN = 1000;
 static const size_t GDERIVATOR_MAX_LIT_LEN = 100;
 static const size_t GDERIVATOR_LEX_LIM = 1000;
 
+static const double GDERIVATOR_EPS = 1e-3;
+
 bool gTree_storeData(gDerivator_Node data, size_t level, FILE *out) //TODO
 {
     return 0;
@@ -361,7 +363,7 @@ static gDerivator_status gDerivator_parser_expr (gDerivator *context, const size
 
 static gDerivator_status gDerivator_parser_prior(gDerivator *context, const size_t start, const size_t end, const size_t subRoot);
 
-static gDerivator_status gDerivator_parser_expn(gDerivator *context, const size_t start, const size_t end, const size_t subRoot);
+static gDerivator_status gDerivator_parser_expn (gDerivator *context, const size_t start, const size_t end, const size_t subRoot);
 
 static gDerivator_status gDerivator_parser_term (gDerivator *context, const size_t start, const size_t end, const size_t subRoot);
 
@@ -926,7 +928,7 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             childId = siblingId;
         }
 
-        if (calculable || mulNum == 0) {            //TODO change to EPS comp everywhere
+        if (calculable || (fabs(mulNum) < GDERIVATOR_EPS)) {           
             size_t numNodeId = GDERIVATOR_POOL_ALLOC();
             gTree_Node *numNode = GDERIVATOR_NODE_BY_ID(numNodeId);
             numNode->data.mode  = gDerivator_Node_mode_num;
@@ -935,7 +937,7 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_killSubtree(&context->tree, rootId));
 
             return gDerivator_status_OK;
-        } else if (mulNum != 1) {
+        } else if ((fabs(mulNum - 1) > GDERIVATOR_EPS)) {
             size_t numNodeId = GDERIVATOR_POOL_ALLOC();
             gTree_Node *numNode = GDERIVATOR_NODE_BY_ID(numNodeId);
             numNode->data.mode  = gDerivator_Node_mode_num;
@@ -943,12 +945,12 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId, numNodeId));
         }
 
-        if (powVar == 1) {
+        if (fabs(powVar - 1) < GDERIVATOR_EPS) {
             size_t varNodeId = GDERIVATOR_POOL_ALLOC();
             gTree_Node *varNode = GDERIVATOR_NODE_BY_ID(varNodeId);
             varNode->data.mode  = gDerivator_Node_mode_var;
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId, varNodeId));
-        } else if (powVar != 0) {
+        } else if (fabs(powVar) > GDERIVATOR_EPS) {
             size_t expNodeId = GDERIVATOR_POOL_ALLOC();
             gTree_Node *expNode = GDERIVATOR_NODE_BY_ID(expNodeId);
             expNode->data.mode  = gDerivator_Node_mode_exp;
@@ -1000,7 +1002,7 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             }
             childId = siblingId;
         }
-        if (calculable) {                                          //TODO change to EPS comp everywhere
+        if (calculable) {                                          
             size_t numNodeId = GDERIVATOR_POOL_ALLOC();
             gTree_Node *numNode = GDERIVATOR_NODE_BY_ID(numNodeId);
             numNode->data.mode  = gDerivator_Node_mode_num;
@@ -1009,7 +1011,7 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_killSubtree(&context->tree, rootId));
 
             return gDerivator_status_OK;
-        } else if (sumNum != 0) {
+        } else if (fabs(sumNum) > GDERIVATOR_EPS) {
             size_t numNodeId = GDERIVATOR_POOL_ALLOC();
             gTree_Node *numNode = GDERIVATOR_NODE_BY_ID(numNodeId);
             numNode->data.mode  = gDerivator_Node_mode_num;
@@ -1017,12 +1019,12 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId, numNodeId));
         }
 
-        if (sumVar == 1) {
+        if (fabs(sumVar - 1) < GDERIVATOR_EPS) {
             size_t varNodeId = GDERIVATOR_POOL_ALLOC();
             gTree_Node *varNode = GDERIVATOR_NODE_BY_ID(varNodeId);
             varNode->data.mode  = gDerivator_Node_mode_var;
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId, varNodeId));
-        } else if (sumVar != 0) {
+        } else if (fabs(sumVar) > GDERIVATOR_EPS) {
             size_t mulNodeId = GDERIVATOR_POOL_ALLOC();
             gTree_Node *mulNode = GDERIVATOR_NODE_BY_ID(mulNodeId);
             mulNode->data.mode  = gDerivator_Node_mode_mul;
