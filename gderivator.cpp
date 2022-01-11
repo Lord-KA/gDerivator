@@ -1,4 +1,5 @@
 #include "gderivator.h"
+#include <cstdlib>
 
 int main()
 {
@@ -7,13 +8,17 @@ int main()
 
     // gDerivator_lexer(&der, "(123 * x ^ 456 * 8495 + x * 12 * (345 - 567)) / cos(13 * x + 134 - sin 12)");
     // gDerivator_lexer(&der, " 1 * 2 * 3 * x * x * 100 * (11 * 13) + 1");
-    gDerivator_lexer(&der, "x + sin(11 * 13 * x) / 10");
+    char buffer[MAX_LINE_LEN] = "";
+    fprintf(stdout, "Provide expression to derivate:\n");
+    getline(buffer, MAX_LINE_LEN, stdin);
+    gDerivator_lexer(&der, buffer);
     gDerivator_parser(&der);
-    // for (size_t i = 0; i < 8; ++i)
-    //     gDerivator_dumpNode(&der, i);
+
     gTree_Node *node = NULL;
     gObjPool_get(&der.tree.pool, (der.tree.root), &node);
-    fprintf(stderr, "Real Root = %lu\n", node->child);
+    #ifdef EXTRA_VERBOSE
+        fprintf(stderr, "Real Root = %lu\n", node->child);
+    #endif
 
     FILE *out = fopen("before.gv", "w");
     gTree_dumpPoolGraphViz(&der.tree, out);
@@ -32,6 +37,7 @@ int main()
     out = fopen("result.tex", "w");
     gDerivator_dumpLatex(&der, out);
     fclose(out);
+    system("pdflatex result.tex && zathura result.pdf");
 
     gDerivator_dtor(&der);
 }

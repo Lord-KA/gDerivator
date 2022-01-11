@@ -840,12 +840,18 @@ static gDerivator_status gDerivator_derivate(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, cosNodeId, childId));
 
         } else if (func == gDerivator_Node_func_cos) {
+            size_t numNodeId = GDERIVATOR_POOL_ALLOC();
+            gTree_Node *numNode = GDERIVATOR_NODE_BY_ID(numNodeId);
+            numNode->data.mode = gDerivator_Node_mode_num;
+            numNode->data.value = -1;
+
             size_t sinNodeId = GDERIVATOR_POOL_ALLOC();  
             gTree_Node *sinNode = GDERIVATOR_NODE_BY_ID(sinNodeId);
             sinNode->data.mode = gDerivator_Node_mode_func;
             sinNode->data.func = gDerivator_Node_func_sin;
 
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, mulNodeId, sinNodeId));
+            GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, mulNodeId, numNodeId));
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, sinNodeId, childId));
 
         } else if (func == gDerivator_Node_func_ln) {
