@@ -20,13 +20,18 @@ int main()
         fprintf(stderr, "Real Root = %lu\n", node->child);
     #endif
 
-    FILE *out = fopen("before.gv", "w");
-    gTree_dumpPoolGraphViz(&der.tree, out);
-    fclose(out);
 
     gDerivator_optimize(&der, node->child);
     gObjPool_get(&der.tree.pool, (der.tree.root), &node);
     gDerivator_derivate(&der, node->child);
+
+    FILE *out = fopen("before.gv", "w");
+    gTree_dumpPoolGraphViz(&der.tree, out);
+    fclose(out);
+
+    gObjPool_get(&der.tree.pool, (der.tree.root), &node);
+    gDerivator_optimize(&der, node->child);
+
     gObjPool_get(&der.tree.pool, (der.tree.root), &node);
     gDerivator_optimize(&der, node->child);
     

@@ -1048,6 +1048,17 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, mulNodeId, numNodeId));
             GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId,    mulNodeId));
         }
+        /*                                                      //TODO add conversion to Sub case when convinient
+        childId = GDERIVATOR_NODE_BY_ID(rootId)->child;
+        siblingId = GDERIVATOR_NODE_BY_ID(childId)->sibling;
+        if (siblingId != -1) {                                  
+            sibling = GDERIVATOR_NODE_BY_ID(siblingId);
+            if (sibling->sibling == -1) {
+                if (sibling->data.mode == gDerivator_Node_mode_mul || gDerivator_Node_mode_num)
+            }
+        }
+        */
+
     } else if (node->data.mode == gDerivator_Node_mode_sub) {
         GDERIVATOR_ID_CHECK(childId);
         gTree_Node *child = GDERIVATOR_NODE_BY_ID(childId);
@@ -1086,6 +1097,28 @@ static gDerivator_status gDerivator_optimize(gDerivator *context, const size_t r
             GDERIVATOR_TREE_CHECK(gTree_replaceNode(&context->tree, rootId, childId));
             GDERIVATOR_POOL_FREE(rootId);
             GDERIVATOR_POOL_FREE(siblingId);
+        }
+    }
+    node = GDERIVATOR_NODE_BY_ID(rootId);
+    if ((node->data.mode == gDerivator_Node_mode_mul) || (node->data.mode == gDerivator_Node_mode_sum)) {
+        const gDerivator_Node_mode mode = node->data.mode;
+        childId = node->child;
+        size_t siblingId = -1;
+        while (childId != -1) {
+            gTree_Node *child = GDERIVATOR_NODE_BY_ID(childId);
+            siblingId = child->sibling;
+            if (child->data.mode == mode) {
+                size_t subChildId = child->child;
+                while (subChildId != -1) {
+                    size_t subSiblingId = GDERIVATOR_NODE_BY_ID(subChildId)->sibling;
+                    GDERIVATOR_TREE_CHECK(gTree_addExistChild(&context->tree, rootId, subChildId));
+                    subChildId = subSiblingId;
+                }
+                child = GDERIVATOR_NODE_BY_ID(childId);
+                child->child = -1;
+                GDERIVATOR_TREE_CHECK(gTree_delSubtree(&context->tree, childId));
+            }
+            childId = siblingId;
         }
     }
     return gDerivator_status_OK;
@@ -1132,7 +1165,7 @@ static gDerivator_status gDerivator_dumpSubtreeLatex(const gDerivator *context, 
             fprintf(out, "}{", op);
             gDerivator_dumpSubtreeLatex(context, siblingId, out);
             fprintf(out, "}", op);
-            
+            break;
 
         case gDerivator_Node_mode_exp:
             fprintf(out, "{");
