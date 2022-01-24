@@ -34,7 +34,7 @@ int main()
 
     gObjPool_get(&der.tree.pool, (der.tree.root), &node);
     gDerivator_optimize(&der, node->child);
-    
+
     out = fopen("after.gv", "w");
     gTree_dumpPoolGraphViz(&der.tree, out);
     fclose(out);

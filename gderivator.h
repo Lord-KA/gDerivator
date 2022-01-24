@@ -68,7 +68,7 @@ static const char gDerivator_Node_funcView[gDerivator_Node_func_CNT][10] = {
         "log",
     };
 
-struct gDerivator_Node 
+struct gDerivator_Node
 {
     gDerivator_Node_mode mode;
     gDerivator_Node_func func;
@@ -89,7 +89,7 @@ static const size_t GDERIVATOR_LEX_LIM = 1000;
 static const double GDERIVATOR_EPS = 1e-3;
 
 enum gDerivator_status {
-    gDerivator_status_OK,  
+    gDerivator_status_OK,
     gDerivator_status_BadStructPtr,
     gDerivator_status_TreeErr,
     gDerivator_status_ObjPoolErr,
@@ -149,7 +149,7 @@ static const char gDerivator_statusMsg[gDerivator_status_CNT + 1][MAX_LINE_LEN] 
                             gDerivator_status_ObjPoolErr);                                                  \
     assert(gPtrValid(macroNode));                                                                            \
     macroNode;                                                                                                \
-})                                                                   
+})
 
 
 #define GDERIVATOR_POOL_ALLOC() ({                                                                 \
